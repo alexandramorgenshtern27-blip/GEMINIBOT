@@ -1,3 +1,4 @@
+print("--- ИНИЦИАЛИЗАЦИЯ ЗАПУЩЕНА ---", flush=True)
 import os
 import subprocess
 import sys
