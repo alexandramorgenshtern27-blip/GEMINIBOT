@@ -1,58 +1,57 @@
 import os
 import sys
 import time
+import vk_api
+from vk_api.longpoll import VkLongPoll, VkEventType
+from google import genai
 
 def log(msg):
-    print(f">>> [DEBUG]: {msg}", flush=True)
+    print(f">>> [LIGHT-BOT]: {msg}", flush=True)
 
-log("1. Скрипт запущен. Жду 5 секунд, чтобы стабилизировать RAM...")
-time.sleep(5)
+log("Запуск облегченной версии...")
 
-try:
-    log("2. Пробую импортировать google-genai...")
-    from google import genai
-    from google.genai import types
-    log("   - OK: google-genai загружен.")
-    
-    log("3. Жду 3 секунды перед vkbottle...")
-    time.sleep(3)
-    
-    log("4. Пробую импортировать vkbottle...")
-    from vkbottle.bot import Bot, Message
-    log("   - OK: vkbottle загружен.")
-
-except Exception as e:
-    log(f"!!! ОШИБКА ПРИ ИМПОРТЕ: {e}")
-    sys.exit(1)
-
-log("5. Все либы на месте. Проверяю ключи...")
+# Получаем ключи
 VK_TOKEN = os.environ.get("VK_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY")
 
 if not VK_TOKEN or not GEMINI_KEY:
-    log("!!! ОШИБКА: Ключи не найдены в Env Variables!")
+    log("Ошибка: нет ключей в переменных!")
     sys.exit(1)
 
-log("6. Инициализация клиентов...")
 try:
+    # Авторизация ВК
+    vk_session = vk_api.VkApi(token=VK_TOKEN)
+    vk = vk_session.get_api()
+    longpoll = VkLongPoll(vk_session)
+    
+    # Авторизация Gemini
     client = genai.Client(api_key=GEMINI_KEY)
-    bot = Bot(token=VK_TOKEN)
-    log("7. Клиенты созданы. Погнали!")
+    
+    log("Связь с ВК и Gemini установлена. Жду сообщений...")
+
+    for event in longpoll.listen():
+        if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
+            log(f"Пришло сообщение: {event.text[:30]}")
+            
+            try:
+                # Запрос к нейронке
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[event.text]
+                )
+                
+                # Отправка ответа в ВК
+                vk.messages.send(
+                    peer_id=event.peer_id,
+                    message=response.text,
+                    random_id=int(time.time() * 1000)
+                )
+                log("Ответ отправлен.")
+                
+            except Exception as e:
+                log(f"Ошибка Gemini или ВК: {e}")
+
 except Exception as e:
-    log(f"!!! ОШИБКА КЛИЕНТОВ: {e}")
+    log(f"Критическая ошибка: {e}")
+    time.sleep(5)
     sys.exit(1)
-
-@bot.on.message()
-async def handler(message: Message):
-    if not message.text: return
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[message.text]
-        )
-        await message.answer(response.text)
-    except Exception as e:
-        log(f"Ошибка в чате: {e}")
-
-if __name__ == "__main__":
-    bot.run_forever()
