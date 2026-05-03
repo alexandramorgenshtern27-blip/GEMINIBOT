@@ -2,3 +2,4 @@ vkbottle
 google-genai
 python-docx
 requests
+python-dotenv
