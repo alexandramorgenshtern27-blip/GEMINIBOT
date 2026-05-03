@@ -1,56 +1,36 @@
 import os
-import io
 import sys
-import requests
+from vkbottle import Bot, Keyboard, KeyboardButtonColor, Text
+from vkbottle.bot import Message # Вот это критически важно для vkbottle 4.8+
 from google import genai
 from google.genai import types
-# ИСПРАВЛЕННЫЙ ИМПОРТ ДЛЯ ТВОЕЙ ВЕРСИИ VKBOTTLE:
-from vkbottle import Keyboard, KeyboardButtonColor, Text, Bot
-from vkbottle.bot import Message 
 
-# Принудительный вывод логов в консоль
 def log(msg):
     print(f"--- {msg} ---", flush=True)
 
-log("ЗАПУСК БОТА...")
-
-# Берем ключи напрямую из системы
+# Проверка ключей сразу при старте
 VK_TOKEN = os.environ.get("VK_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY")
 
 if not VK_TOKEN or not GEMINI_KEY:
-    log("ОШИБКА: Ключи не найдены в переменных окружения хостинга!")
+    log("КРИТИЧЕСКАЯ ОШИБКА: Ключи не найдены в Environment Variables!")
     sys.exit(1)
 
-try:
-    client = genai.Client(api_key=GEMINI_KEY)
-    bot = Bot(token=VK_TOKEN)
-    log("ПОДКЛЮЧЕНИЕ УСПЕШНО")
-except Exception as e:
-    log(f"ОШИБКА ПРИ СТАРТЕ: {e}")
-    sys.exit(1)
+bot = Bot(token=VK_TOKEN)
+client = genai.Client(api_key=GEMINI_KEY)
 
 @bot.on.message()
-async def handle_message(message: Message):
-    if not message.text:
-        return
-    
-    log(f"Сообщение: {message.text[:20]}...")
-    
+async def handler(message: Message):
+    if not message.text: return
     try:
         response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=[message.text],
-            config=types.GenerateContentConfig(
-                system_instruction="ты хамоватый гений, отвечай дерзко и без заглавных букв"
-            )
+            contents=[message.text]
         )
         await message.answer(response.text)
-        log("Ответ отправлен")
     except Exception as e:
         log(f"Ошибка Gemini: {e}")
-        await message.answer(f"че-то пошло не так: {e}")
 
 if __name__ == "__main__":
-    log("БОТ ВЫШЕЛ В СЕТЬ (LONGPOLL ЗАПУЩЕН)")
+    log("БОТ ЗАПУСКАЕТСЯ...")
     bot.run_forever()
