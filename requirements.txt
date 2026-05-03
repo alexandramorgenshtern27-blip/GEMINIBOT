@@ -1,0 +1,5 @@
+vkbottle==0.19.1
+google-genai
+python-docx
+requests
+python-dotenv
