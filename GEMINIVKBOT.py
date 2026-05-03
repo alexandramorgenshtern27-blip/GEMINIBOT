@@ -1,68 +1,76 @@
 import os
-import io
 import sys
-import requests
-from python_dotenv import load_dotenv
+import subprocess
 
-# Принудительный вывод логов
+# Функция для мгновенной печати в логи (чтобы ты видела процесс)
 def log(msg):
     print(f"--- {msg} ---", flush=True)
 
-log("ЗАПУСК СКРИПТА")
-load_dotenv()
+# 1. ПРИНУДИТЕЛЬНАЯ УСТАНОВКА (без импортов в начале!)
+def install_requirements():
+    log("ПРОВЕРКА БИБЛИОТЕК...")
+    # Список того, что нам жизненно необходимо
+    packages = ["vkbottle", "google-genai", "python-docx", "requests", "python-dotenv"]
+    
+    for pkg in packages:
+        try:
+            # Пытаемся проверить наличие (хитрым способом без import)
+            log(f"Проверяю {pkg}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "show", pkg.split('==')[0]], 
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            log(f"Библиотека {pkg} не найдена. Устанавливаю...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", pkg])
+            log(f"Успешно установлено: {pkg}")
 
+# Сначала ставим всё
 try:
-    from google import genai
-    from google.genai import types
-    from vkbottle import Keyboard, KeyboardButtonColor, Text, DocMessagesUploader, PhotoMessageUploader
-    from vkbottle.bot import Bot, Message
-    from docx import Document
-    log("ВСЕ БИБЛИОТЕКИ ИМПОРТИРОВАНЫ")
-except ImportError as e:
-    log(f"ОШИБКА ИМПОРТА: {e}")
-    log("Скорее всего, хостинг не установил библиотеки из requirements.txt")
+    install_requirements()
+except Exception as e:
+    log(f"КРИТИЧЕСКАЯ ОШИБКА ПРИ УСТАНОВКЕ: {e}")
     sys.exit(1)
 
-# Данные
+# 2. ТЕПЕРЬ МОЖНО ИМПОРТИРОВАТЬ
+log("ВСЕ БИБЛИОТЕКИ НА МЕСТЕ. ИМПОРТИРУЮ...")
+import io
+import requests
+from python_dotenv import load_dotenv
+from google import genai
+from google.genai import types
+from vkbottle import Keyboard, KeyboardButtonColor, Text, Bot, Message
+from docx import Document
+
+load_dotenv()
+
+# ================= НАСТРОЙКИ ИЗ ENV =================
 VK_TOKEN = os.getenv("VK_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not VK_TOKEN or not GEMINI_KEY:
-    log("КРИТИЧЕСКАЯ ОШИБКА: КЛЮЧИ НЕ НАЙДЕНЫ В ENV")
+    log("ОШИБКА: Ключи не найдены в переменных окружения хостинга!")
     sys.exit(1)
 
-try:
-    client = genai.Client(api_key=GEMINI_KEY)
-    bot = Bot(token=VK_TOKEN)
-    log("API КЛИЕНТЫ ИНИЦИАЛИЗИРОВАНЫ")
-except Exception as e:
-    log(f"ОШИБКА ИНИЦИАЛИЗАЦИИ: {e}")
-    sys.exit(1)
+# Инициализация
+client = genai.Client(api_key=GEMINI_KEY)
+bot = Bot(token=VK_TOKEN)
 
 @bot.on.message()
-async def handler(message: Message):
+async def handle(message: Message):
     if not message.text: return
-    log(f"ПОЛУЧЕНО СООБЩЕНИЕ: {message.text[:20]}...")
-    
-    await message.answer("погоди рожаю ответ...")
+    log(f"Новое сообщение: {message.text[:15]}...")
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[message.text],
-            config=types.GenerateContentConfig(
-                system_instruction="ты хамоватый гений"
-            )
+            config=types.GenerateContentConfig(system_instruction="ты дерзкий гений")
         )
         await message.answer(response.text)
-        log("ОТВЕТ ОТПРАВЛЕН")
+        log("Ответил успешно")
     except Exception as e:
-        log(f"ОШИБКА ГЕНЕРАЦИИ: {e}")
+        log(f"Ошибка Gemini: {e}")
         await message.answer(f"мозг поплыл: {e}")
 
 if __name__ == "__main__":
-    log("БОТ ПОДКЛЮЧАЕТСЯ К ВК (LONGPOLL)...")
-    try:
-        bot.run_forever()
-    except Exception as e:
-        log(f"БОТ УПАЛ ПРИ РАБОТЕ: {e}")
+    log("БОТ ПОДКЛЮЧАЕТСЯ К ВК...")
+    bot.run_forever()
