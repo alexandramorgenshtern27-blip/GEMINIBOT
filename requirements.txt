@@ -1,4 +1,4 @@
 vkbottle
 google-genai
-requests
 python-dotenv
+requests
