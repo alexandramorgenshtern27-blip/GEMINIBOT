@@ -1,15 +1,17 @@
 FROM python:3.11-slim
 
+# Оптимизация Python для работы в малых контейнерах
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-# Копируем файл зависимостей
+# Копируем и ставим всё сразу
 COPY requirements.txt .
-
-# Устанавливаем библиотеки
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем остальной код
 COPY . .
 
-# Запускаем бота с флагом -u (чтобы логи не застревали)
+# Запуск с ограничением воркеров (чтобы не плодить процессы)
 CMD ["python", "-u", "GEMINIVKBOT.py"]
