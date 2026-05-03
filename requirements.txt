@@ -1,5 +1,4 @@
-vkbottle==4.8.2
+vkbottle
 google-genai
 python-docx
 requests
-python-dotenv
