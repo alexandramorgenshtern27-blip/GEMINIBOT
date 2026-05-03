@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (
 )
 
 try:
-    log("Запуск системы. ВК напрямую, Gemini через инъекцию прокси...")
+    log("Запуск системы. Пробую Gemini 2.0 Flash...")
     
     # Инициализируем клиент
     client = genai.Client(api_key=GEMINI_KEY)
@@ -31,7 +31,7 @@ try:
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
-    log("ВК и Gemini готовы!")
+    log("ВК и Gemini 2.0 готовы!")
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
@@ -48,11 +48,13 @@ try:
                 os.environ["HTTP_PROXY"] = PROXY_URL
                 os.environ["HTTPS_PROXY"] = PROXY_URL
                 
-                # ВАЖНО: В этой версии SDK пишем модель БЕЗ "models/" 
-                # Если gemini-1.5-flash не идет, пробуем gemini-1.5-flash-002
+                # ПРОБУЕМ МОДЕЛЬ 2.0 FLASH
                 response = client.models.generate_content(
-                    model="gemini-1.5-flash", 
-                    config={'system_instruction': SYSTEM_PROMPT},
+                    model="gemini-2.0-flash", 
+                    config={
+                        'system_instruction': SYSTEM_PROMPT,
+                        'http_options': {'api_version': 'v1'} # Пытаемся форсировать стабильную версию v1
+                    },
                     contents=event.text
                 )
                 
@@ -62,6 +64,7 @@ try:
                 
                 full_text = response.text if response.text else "пусто чето бро"
                 
+                # Логика с Word (остается без изменений)
                 if len(full_text) > 600:
                     doc = Document()
                     style = doc.styles['Normal']
@@ -86,9 +89,11 @@ try:
                         random_id=int(time.time() * 1000)
                     )
                 else:
+                    # Убираем знаки препинания для чилл-вайба
+                    clean_text = full_text.lower().replace(",", "").replace(".", "").replace("!", "").replace("?", "")
                     vk.messages.send(
                         peer_id=event.peer_id,
-                        message=full_text.lower().replace(",", "").replace(".", ""),
+                        message=clean_text,
                         random_id=int(time.time() * 1000)
                     )
                 log("Ответ доставлен")
