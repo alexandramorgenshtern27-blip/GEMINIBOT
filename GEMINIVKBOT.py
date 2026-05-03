@@ -1,5 +1,8 @@
 import io
 import os
+import sys
+import traceback
+import logging
 import requests
 # Используем новый SDK, как просит терминал
 from google import genai
@@ -9,6 +12,21 @@ from vkbottle.bot import Bot, Message
 from docx import Document
 from dotenv import load_dotenv
 from typing import Dict
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    stream=sys.stdout,
+)
+
+
+def mask_secret(value: str | None) -> str:
+    if not value:
+        return "missing"
+    if len(value) <= 8:
+        return "***"
+    return f"{value[:4]}...{value[-4:]}"
+
 
 # ================= НАСТРОЙКИ =================
 load_dotenv()
@@ -23,10 +41,12 @@ required_vars = {
 }
 missing_vars = [name for name, value in required_vars.items() if not value]
 if missing_vars:
-    raise RuntimeError(
-        f"Missing environment variables: {', '.join(missing_vars)}. "
-        "Create .env file based on .env.example or provide vars in host environment."
-    )
+    logging.error("Missing environment variables: %s", ", ".join(missing_vars))
+    logging.error("Expected vars: VK_TOKEN, GEMINI_KEY, HF_TOKEN")
+    logging.error("Current VK_TOKEN: %s", mask_secret(VK_TOKEN))
+    logging.error("Current GEMINI_KEY: %s", mask_secret(GEMINI_KEY))
+    logging.error("Current HF_TOKEN: %s", mask_secret(HF_TOKEN))
+    raise RuntimeError("Environment variables are missing")
 
 # Инициализируем нового клиента Gemini
 client = genai.Client(api_key=GEMINI_KEY)
@@ -138,5 +158,14 @@ async def main_handler(message: Message):
         await message.answer(f"мозг поплыл: {e}")
 
 if __name__ == "__main__":
-    print("--- БОТ ЗАПУЩЕН И ГОТОВ ХАМИТЬ ---")
-    bot.run_forever()
+    try:
+        logging.info("Booting GeminiVKBOT container process")
+        logging.info("VK_TOKEN: %s", mask_secret(VK_TOKEN))
+        logging.info("GEMINI_KEY: %s", mask_secret(GEMINI_KEY))
+        logging.info("HF_TOKEN: %s", mask_secret(HF_TOKEN))
+        logging.info("--- БОТ ЗАПУЩЕН И ГОТОВ ХАМИТЬ ---")
+        bot.run_forever()
+    except Exception:
+        logging.error("Fatal startup/runtime error in bot process")
+        traceback.print_exc()
+        raise

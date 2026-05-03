@@ -35,7 +35,27 @@ docker build -t gemini-vk-bot .
 docker run --env-file .env --name gemini-vk-bot --restart unless-stopped gemini-vk-bot
 ```
 
-## 4) Публикация на GitHub
+## 4) Быстрый деплой на хост (чтобы просто заработало)
+
+1. Загрузи проект в GitHub (весь репозиторий).
+2. На хосте создай сервис из Dockerfile/репозитория.
+3. Тип процесса: `worker` (не `web`).
+4. Команда запуска (если поле есть): `python -u GEMINIVKBOT.py`
+   - если поле пустое, будет использована команда из `Dockerfile`.
+5. Добавь переменные окружения:
+   - `VK_TOKEN=...`
+   - `GEMINI_KEY=...`
+   - `HF_TOKEN=...`
+6. Нажми `Redeploy` / `Restart`.
+7. Открой `Runtime logs` / `Container logs`.
+
+В логах должны быть строки:
+- `Booting GeminiVKBOT container process`
+- `--- БОТ ЗАПУЩЕН И ГОТОВ ХАМИТЬ ---`
+
+Если есть ошибка, в логах теперь будет полный traceback с причиной.
+
+## 5) Публикация на GitHub
 
 ```bash
 git init
