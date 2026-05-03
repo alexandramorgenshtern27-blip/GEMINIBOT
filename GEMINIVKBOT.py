@@ -11,16 +11,13 @@ from docx.shared import Pt
 def log(msg):
     print(f">>> [BOT-FINAL]: {msg}", flush=True)
 
-# Твои данные прокси
+# Твой прокси
 PROXY_URL = "http://Lp2dsp:SwUV5x@85.195.81.163:12213"
-
-# УБИРАЕМ глобальный os.environ, чтобы не вешать прокси на ВК
-# os.environ["HTTP_PROXY"] = PROXY_URL <--- ЭТО УДАЛЯЕМ
 
 SYSTEM_PROMPT = (
     "Ты — дерзкий дрилл-подросток на чилл-вайбе. В чате пишешь строго маленькими буквами, "
     "без запятых и знаков препинания. Твой стиль — неформальный, но ты очень умный. "
-    "Если текст большой — пиши его официально и грамотно."
+    "Если текст большой — пиши его официально и грамотно с соблюдением правил."
 )
 
 VK_TOKEN = os.environ.get("VK_TOKEN")
@@ -46,21 +43,16 @@ def upload_doc(vk_session, peer_id, file_stream, filename="answer.docx"):
     return f"doc{doc_data['doc']['owner_id']}_{doc_data['doc']['id']}"
 
 try:
-    log("Запуск дрилл-бота (раздельные каналы)...")
+    log("Запуск системы. ВК напрямую, Gemini через инъекцию прокси...")
     
-    # 1. Настраиваем Gemini ТОЧЕЧНО через прокси
-    # Используем внутренний параметр SDK, если он позволяет, 
-    # либо передаем прокси только в момент создания клиента Gemini
-    client = genai.Client(
-        api_key=GEMINI_KEY,
-        http_options={'proxy': PROXY_URL} 
-    )
+    # Инициализируем Gemini БЕЗ параметров прокси (чтобы не злить Pydantic)
+    client = genai.Client(api_key=GEMINI_KEY)
 
-    # 2. Настройка ВК напрямую (БЕЗ ПРОКСИ)
+    # Инициализируем ВК напрямую
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
-    log("ВК подключен напрямую, Gemini через прокси!")
+    log("ВК и Gemini готовы!")
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
@@ -73,11 +65,19 @@ try:
             )
 
             try:
+                # --- ТАКТИКА НИНДЗЯ ВКЛЮЧЕНА ---
+                os.environ["HTTP_PROXY"] = PROXY_URL
+                os.environ["HTTPS_PROXY"] = PROXY_URL
+                
                 response = client.models.generate_content(
                     model="gemini-1.5-flash",
                     config={'system_instruction': SYSTEM_PROMPT},
                     contents=event.text
                 )
+                
+                # --- ТАКТИКА НИНДЗЯ ВЫКЛЮЧЕНА (чтобы LongPoll ВК не упал) ---
+                if "HTTP_PROXY" in os.environ: del os.environ["HTTP_PROXY"]
+                if "HTTPS_PROXY" in os.environ: del os.environ["HTTPS_PROXY"]
                 
                 full_text = response.text if response.text else "пусто чето бро"
                 
@@ -99,6 +99,9 @@ try:
                 log("Ответ доставлен")
 
             except Exception as e:
+                # На случай ошибки тоже чистим переменные
+                if "HTTP_PROXY" in os.environ: del os.environ["HTTP_PROXY"]
+                if "HTTPS_PROXY" in os.environ: del os.environ["HTTPS_PROXY"]
                 log(f"Ошибка Gemini: {e}")
                 vk.messages.send(
                     peer_id=event.peer_id,
