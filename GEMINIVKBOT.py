@@ -4,7 +4,9 @@ import sys
 import requests
 from google import genai
 from google.genai import types
-from vkbottle import Keyboard, KeyboardButtonColor, Text, Bot, Message
+# ИСПРАВЛЕННЫЙ ИМПОРТ ДЛЯ ТВОЕЙ ВЕРСИИ VKBOTTLE:
+from vkbottle import Keyboard, KeyboardButtonColor, Text, Bot
+from vkbottle.bot import Message 
 
 # Принудительный вывод логов в консоль
 def log(msg):
@@ -21,7 +23,6 @@ if not VK_TOKEN or not GEMINI_KEY:
     sys.exit(1)
 
 try:
-    # Используем модель 2.0 Flash (самая быстрая)
     client = genai.Client(api_key=GEMINI_KEY)
     bot = Bot(token=VK_TOKEN)
     log("ПОДКЛЮЧЕНИЕ УСПЕШНО")
@@ -34,7 +35,7 @@ async def handle_message(message: Message):
     if not message.text:
         return
     
-    log(f"Сообщение от {message.from_id}: {message.text[:20]}...")
+    log(f"Сообщение: {message.text[:20]}...")
     
     try:
         response = client.models.generate_content(
@@ -45,7 +46,7 @@ async def handle_message(message: Message):
             )
         )
         await message.answer(response.text)
-        log("Ответ отправлен в ВК")
+        log("Ответ отправлен")
     except Exception as e:
         log(f"Ошибка Gemini: {e}")
         await message.answer(f"че-то пошло не так: {e}")
