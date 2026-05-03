@@ -8,38 +8,40 @@ from google import genai
 def log(msg):
     print(f">>> [BOT-FINAL]: {msg}", flush=True)
 
-# Твои данные прокси из скриншота
+# Твои данные прокси
 PROXY_URL = "http://Lp2dsp:SwUV5x@85.195.81.163:12213"
 
-# Устанавливаем прокси на уровне всей системы (для Google API)
+# Системные переменные для прокси
 os.environ["HTTP_PROXY"] = PROXY_URL
 os.environ["HTTPS_PROXY"] = PROXY_URL
 
-log("Старт системы. Настроены переменные прокси...")
+log("Старт системы. Прокси настроены.")
 
 VK_TOKEN = os.environ.get("VK_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY")
 
 if not VK_TOKEN or not GEMINI_KEY:
-    log("ОШИБКА: Забыла добавить VK_TOKEN или GEMINI_KEY в панель хоста!")
+    log("ОШИБКА: Нет ключей VK_TOKEN или GEMINI_KEY!")
     sys.exit(1)
 
 try:
-    # Теперь инициализируем клиент БЕЗ лишних аргументов
-    # Он сам подхватит прокси из os.environ
+    # Инициализация клиента
     client = genai.Client(api_key=GEMINI_KEY)
     
-    log("Проверка доступности Gemini через прокси...")
-    available_models = [m.name for m in client.models.list() if 'generateContent' in m.supported_methods]
-    
-    if not available_models:
-        log("ОШИБКА: Модели не найдены. Google всё еще не видит прокси.")
-        sys.exit(1)
-        
-    SELECTED_MODEL = available_models[0]
-    log(f"Связь установлена! Модель: {SELECTED_MODEL}")
+    # Прямая проверка связи с Google
+    log("Проверяю связь с Google Gemini...")
+    try:
+        # Просто пробуем отправить тестовый запрос
+        test_res = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents="test"
+        )
+        log("Связь с Gemini УСТАНОВЛЕНА!")
+    except Exception as e:
+        log(f"Ошибка проверки связи (возможно, прокси): {e}")
+        # Не выходим, пробуем работать дальше
 
-    # Инициализация ВК (ВК обычно игнорирует системные прокси, так что должен работать)
+    # Подключаем ВК
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
@@ -47,14 +49,15 @@ try:
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
-            log(f"Новое сообщение: {event.text[:20]}...")
+            log(f"Сообщение от {event.user_id}")
             try:
+                # Используем проверенную модель напрямую
                 response = client.models.generate_content(
-                    model=SELECTED_MODEL,
+                    model="gemini-1.5-flash",
                     contents=event.text
                 )
                 
-                answer = response.text if response.text else "Google прислал пустой ответ."
+                answer = response.text if response.text else "Нейронка не ответила."
                 
                 vk.messages.send(
                     peer_id=event.peer_id,
@@ -63,7 +66,7 @@ try:
                 )
                 log("Ответ отправлен.")
             except Exception as e:
-                log(f"Ошибка Gemini: {e}")
+                log(f"Ошибка при генерации: {e}")
 
 except Exception as e:
     log(f"КРИТИЧЕСКИЙ СБОЙ: {e}")
