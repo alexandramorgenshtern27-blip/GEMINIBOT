@@ -5,7 +5,6 @@ import io
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from google import genai
-from google.genai import types # Добавили импорт типов
 from docx import Document
 from docx.shared import Pt
 
@@ -22,21 +21,28 @@ SYSTEM_PROMPT = (
     "без запятых и точек. если просят написать что-то длинное — пиши это грамотно и официально."
 )
 
-try:
-    log("Запуск системы. Настройка Gemini 2.0...")
-    
-    # Чтобы ВК не лез через прокси, МЫ НЕ ПИШЕМ os.environ
-    # Вместо этого настраиваем Gemini отдельно:
-    client = genai.Client(
-        api_key=GEMINI_KEY,
-        http_options=types.HttpOptions(proxy=PROXY_URL) # Передаем прокси правильно через объект типов
-    )
+# Функция для временного включения прокси
+def set_proxy(enable):
+    if enable:
+        os.environ["HTTP_PROXY"] = PROXY_URL
+        os.environ["HTTPS_PROXY"] = PROXY_URL
+    else:
+        os.environ.pop("HTTP_PROXY", None)
+        os.environ.pop("HTTPS_PROXY", None)
 
-    # Инициализируем ВК (он пойдет по обычному интернету хостинга)
+try:
+    log("Запуск системы. Чистая настройка...")
+    
+    # Инициализируем ВК БЕЗ прокси
+    set_proxy(False)
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
-    log("ВК запущен напрямую, Gemini через прокси. Готово!")
+    
+    # Клиент Gemini создаем один раз (он будет чекать прокси при вызове метода)
+    client = genai.Client(api_key=GEMINI_KEY)
+    
+    log("ВК и Gemini 2.0 готовы!")
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
@@ -49,11 +55,17 @@ try:
             )
 
             try:
+                # 1. ВКЛЮЧАЕМ ПРОКСИ ПЕРЕД ГЕНЕРАЦИЕЙ
+                set_proxy(True)
+                
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
                     contents=event.text,
                     config={'system_instruction': SYSTEM_PROMPT}
                 )
+                
+                # 2. ВЫКЛЮЧАЕМ ПРОКСИ СРАЗУ ПОСЛЕ ОТВЕТА
+                set_proxy(False)
                 
                 full_text = response.text if response.text else "пусто чето бро"
                 
@@ -84,6 +96,7 @@ try:
                 log("Ответ доставлен")
 
             except Exception as e:
+                set_proxy(False) # Выключаем прокси при ошибке
                 log(f"Ошибка Gemini: {e}")
                 vk.messages.send(
                     peer_id=event.peer_id,
@@ -92,6 +105,7 @@ try:
                 )
 
 except Exception as e:
+    set_proxy(False)
     log(f"КРИТИЧЕСКИЙ СБОЙ: {e}")
     time.sleep(5)
     sys.exit(1)
