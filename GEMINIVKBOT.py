@@ -12,7 +12,12 @@ def log(msg):
     print(f">>> [BOT-FINAL]: {msg}", flush=True)
 
 # --- НАСТРОЙКИ ---
+# Если ты уже прописал прокси в настройках хостинга, эти строки ниже можно не менять.
+# Они просто подстрахуют, если на хосте что-то не подхватилось.
 PROXY_URL = "http://Lp2dsp:SwUV5x@85.195.81.163:12213"
+os.environ["HTTP_PROXY"] = PROXY_URL
+os.environ["HTTPS_PROXY"] = PROXY_URL
+
 VK_TOKEN = os.environ.get("VK_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY")
 
@@ -24,23 +29,21 @@ SYSTEM_PROMPT = (
 try:
     log("Запуск системы. Настройка Gemini 2.0...")
     
-    # Конфигурируем клиент Gemini с прокси сразу
-    # Это решает проблему с доступом из РФ и корректно передает параметры
-    client = genai.Client(
-        api_key=GEMINI_KEY,
-        http_options={'proxy': PROXY_URL}
-    )
+    # КРИТИЧЕСКИЙ МОМЕНТ: 
+    # В скобках ниже должен быть ТОЛЬКО api_key. 
+    # Никаких http_options или proxy, иначе будет ошибка Pydantic!
+    client = genai.Client(api_key=GEMINI_KEY)
 
+    # Инициализируем ВК
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
-    log("ВК и Gemini готовы!")
+    log("ВК и Gemini 2.0 готовы!")
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
             log(f"Запрос от {event.user_id}")
             
-            # Быстрый ответ, чтобы ВК не висел
             vk.messages.send(
                 peer_id=event.peer_id,
                 message="ща погодь чекну инфу по фасту...",
@@ -48,8 +51,7 @@ try:
             )
 
             try:
-                # ВАЖНО: В новой библиотеке google-genai 
-                # system_instruction передается внутри словаря config
+                # Генерируем ответ
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
                     contents=event.text,
@@ -61,14 +63,11 @@ try:
                 full_text = response.text if response.text else "пусто чето бро"
                 
                 if len(full_text) > 600:
-                    # Создаем документ
                     doc = Document()
-                    style = doc.styles['Normal']
-                    font = style.font
-                    font.name = 'Times New Roman'
-                    font.size = Pt(12)
-                    for line in full_text.split('\n'):
-                        if line.strip(): doc.add_paragraph(line)
+                    # Упрощенная запись в ворд
+                    p = doc.add_paragraph(full_text)
+                    p.style.font.name = 'Times New Roman'
+                    p.style.font.size = Pt(12)
                     
                     f_stream = io.BytesIO()
                     doc.save(f_stream)
@@ -85,14 +84,14 @@ try:
                         random_id=int(time.time() * 1000)
                     )
                 else:
-                    # Дрилл-стайл форматирование
+                    # Убираем знаки препинания для чилл-вайба
                     clean_text = full_text.lower().replace(",", "").replace(".", "").replace("!", "").replace("?", "")
                     vk.messages.send(
                         peer_id=event.peer_id,
                         message=clean_text,
                         random_id=int(time.time() * 1000)
                     )
-                log("Ответ отправлен")
+                log("Ответ доставлен")
 
             except Exception as e:
                 log(f"Ошибка Gemini: {e}")
