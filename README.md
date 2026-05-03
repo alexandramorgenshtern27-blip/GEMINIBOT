@@ -54,6 +54,13 @@ docker run --env-file .env --name gemini-vk-bot --restart unless-stopped gemini-
 - `--- БОТ ЗАПУЩЕН И ГОТОВ ХАМИТЬ ---`
 
 Если есть ошибка, в логах теперь будет полный traceback с причиной.
+Если панель логов хоста пустая, открой Web Terminal и проверь файл:
+
+```bash
+cat /app/data/startup_error.log
+```
+
+Этот файл заполняется автоматически при фатальных ошибках старта.
 
 ## 5) Публикация на GitHub
 

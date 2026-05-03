@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import time
 import traceback
 import logging
 import requests
@@ -19,6 +20,8 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
+ERROR_LOG_PATH = os.getenv("ERROR_LOG_PATH", "/app/data/startup_error.log")
+
 
 def mask_secret(value: str | None) -> str:
     if not value:
@@ -26,6 +29,19 @@ def mask_secret(value: str | None) -> str:
     if len(value) <= 8:
         return "***"
     return f"{value[:4]}...{value[-4:]}"
+
+
+def persist_startup_error(error_text: str) -> None:
+    try:
+        error_dir = os.path.dirname(ERROR_LOG_PATH)
+        if error_dir:
+            os.makedirs(error_dir, exist_ok=True)
+        with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write("\n" + "=" * 60 + "\n")
+            f.write(error_text)
+            f.write("\n")
+    except Exception:
+        logging.exception("Failed to persist startup error to %s", ERROR_LOG_PATH)
 
 
 # ================= НАСТРОЙКИ =================
@@ -41,12 +57,7 @@ required_vars = {
 }
 missing_vars = [name for name, value in required_vars.items() if not value]
 if missing_vars:
-    logging.error("Missing environment variables: %s", ", ".join(missing_vars))
-    logging.error("Expected vars: VK_TOKEN, GEMINI_KEY, HF_TOKEN")
-    logging.error("Current VK_TOKEN: %s", mask_secret(VK_TOKEN))
-    logging.error("Current GEMINI_KEY: %s", mask_secret(GEMINI_KEY))
-    logging.error("Current HF_TOKEN: %s", mask_secret(HF_TOKEN))
-    raise RuntimeError("Environment variables are missing")
+    logging.warning("Missing environment variables at import: %s", ", ".join(missing_vars))
 
 # Инициализируем нового клиента Gemini
 client = genai.Client(api_key=GEMINI_KEY)
@@ -159,6 +170,22 @@ async def main_handler(message: Message):
 
 if __name__ == "__main__":
     try:
+        startup_missing = [name for name, value in {"VK_TOKEN": VK_TOKEN, "GEMINI_KEY": GEMINI_KEY}.items() if not value]
+        if startup_missing:
+            msg = (
+                "Fatal config error: required env vars are missing: "
+                + ", ".join(startup_missing)
+                + ". Set them in hosting panel and redeploy."
+            )
+            logging.error(msg)
+            logging.error("VK_TOKEN: %s", mask_secret(VK_TOKEN))
+            logging.error("GEMINI_KEY: %s", mask_secret(GEMINI_KEY))
+            logging.error("HF_TOKEN: %s", mask_secret(HF_TOKEN))
+            persist_startup_error(msg)
+            # Do not exit immediately, keep container alive for terminal diagnostics.
+            while True:
+                time.sleep(60)
+
         logging.info("Booting GeminiVKBOT container process")
         logging.info("VK_TOKEN: %s", mask_secret(VK_TOKEN))
         logging.info("GEMINI_KEY: %s", mask_secret(GEMINI_KEY))
@@ -167,5 +194,9 @@ if __name__ == "__main__":
         bot.run_forever()
     except Exception:
         logging.error("Fatal startup/runtime error in bot process")
-        traceback.print_exc()
-        raise
+        err = traceback.format_exc()
+        print(err, flush=True)
+        persist_startup_error(err)
+        # Keep the process running to avoid crash-loop and allow debugging from web terminal.
+        while True:
+            time.sleep(60)
