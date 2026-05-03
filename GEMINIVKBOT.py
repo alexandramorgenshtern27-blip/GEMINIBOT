@@ -22,21 +22,25 @@ SYSTEM_PROMPT = (
 )
 
 try:
-    log("Запуск системы. Пробую Gemini 2.0 Flash...")
+    log("Запуск системы. Настройка Gemini 2.0...")
     
-    # Инициализируем клиент
-    client = genai.Client(api_key=GEMINI_KEY)
+    # Конфигурируем клиент Gemini с прокси сразу
+    # Это решает проблему с доступом из РФ и корректно передает параметры
+    client = genai.Client(
+        api_key=GEMINI_KEY,
+        http_options={'proxy': PROXY_URL}
+    )
 
-    # Инициализируем ВК
     vk_session = vk_api.VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
     longpoll = VkLongPoll(vk_session)
-    log("ВК и Gemini 2.0 готовы!")
+    log("ВК и Gemini готовы!")
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
             log(f"Запрос от {event.user_id}")
             
+            # Быстрый ответ, чтобы ВК не висел
             vk.messages.send(
                 peer_id=event.peer_id,
                 message="ща погодь чекну инфу по фасту...",
@@ -44,28 +48,20 @@ try:
             )
 
             try:
-                # ВКЛЮЧАЕМ ПРОКСИ
-                os.environ["HTTP_PROXY"] = PROXY_URL
-                os.environ["HTTPS_PROXY"] = PROXY_URL
-                
-                # ПРОБУЕМ МОДЕЛЬ 2.0 FLASH
+                # ВАЖНО: В новой библиотеке google-genai 
+                # system_instruction передается внутри словаря config
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash", 
+                    model="gemini-2.0-flash",
+                    contents=event.text,
                     config={
                         'system_instruction': SYSTEM_PROMPT,
-                        'http_options': {'api_version': 'v1'} # Пытаемся форсировать стабильную версию v1
-                    },
-                    contents=event.text
+                    }
                 )
-                
-                # ВЫКЛЮЧАЕМ ПРОКСИ
-                if "HTTP_PROXY" in os.environ: del os.environ["HTTP_PROXY"]
-                if "HTTPS_PROXY" in os.environ: del os.environ["HTTPS_PROXY"]
                 
                 full_text = response.text if response.text else "пусто чето бро"
                 
-                # Логика с Word (остается без изменений)
                 if len(full_text) > 600:
+                    # Создаем документ
                     doc = Document()
                     style = doc.styles['Normal']
                     font = style.font
@@ -89,18 +85,16 @@ try:
                         random_id=int(time.time() * 1000)
                     )
                 else:
-                    # Убираем знаки препинания для чилл-вайба
+                    # Дрилл-стайл форматирование
                     clean_text = full_text.lower().replace(",", "").replace(".", "").replace("!", "").replace("?", "")
                     vk.messages.send(
                         peer_id=event.peer_id,
                         message=clean_text,
                         random_id=int(time.time() * 1000)
                     )
-                log("Ответ доставлен")
+                log("Ответ отправлен")
 
             except Exception as e:
-                if "HTTP_PROXY" in os.environ: del os.environ["HTTP_PROXY"]
-                if "HTTPS_PROXY" in os.environ: del os.environ["HTTPS_PROXY"]
                 log(f"Ошибка Gemini: {e}")
                 vk.messages.send(
                     peer_id=event.peer_id,
